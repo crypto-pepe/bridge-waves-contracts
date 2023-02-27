@@ -1,0 +1,200 @@
+{-# STDLIB_VERSION 6 #-}
+{-# CONTENT_TYPE DAPP #-}
+{-# SCRIPT_TYPE ACCOUNT #-}
+
+let SEPARATOR = "__"
+let KEY_MULTISIG = "MULTISIG"
+let KEY_PUBLIC_KEYS = "PUBLIC_KEYS"
+let KEY_QUORUM = "QUORUM"
+let KEY_CONFIRM = "CONFIRM"
+let KEY_STATUS = "STATUS"
+
+func _validateAddress(address_: String) = {
+    match addressFromString(address_) {
+        case a:Address => true
+        case _ => false
+    }
+}
+
+func _validateOwner(acc_: Int, elem_: String) = {
+    if elem_ == "" then
+        throw("invalid owner")
+    else if fromBase58String(elem_).size() != 32 then
+        throw("invalid owner public key")
+    else acc_
+}
+
+@Callable(i)
+func init(owners_: List[String], quorum_: Int) = {
+    strict err =
+        if getString(KEY_MULTISIG).isDefined() then
+            throw("init: already initialized")
+        else unit
+
+    strict err1 =
+        if owners_.size() <= 0 || owners_.size() > 10 then
+            throw("init: invalid owners")
+        else if quorum_ <= 0 || quorum_ > owners_.size() then
+            throw("init: invalid quorum")
+        else unit
+
+    strict err2 = FOLD<10>(owners_, 0, _validateOwner)
+
+    (
+        [
+            StringEntry(KEY_MULTISIG, this.toString()),
+            StringEntry(KEY_PUBLIC_KEYS, makeString(owners_, SEPARATOR)),
+            IntegerEntry(KEY_QUORUM, quorum_)
+        ], unit
+    )
+}
+
+@Callable(i)
+func addOwner(publicKey_: String) = {
+    let publicKeys = getStringValue(KEY_PUBLIC_KEYS)
+    let publicKeysList = publicKeys.split(SEPARATOR)
+
+    if i.caller != this then
+        throw("addOwner: not allowed")
+    else if _validateOwner(0, publicKey_) != 0 then
+        throw("addOwner: invalid public key")
+    else if containsElement(publicKeysList, publicKey_) then
+        throw("addOwner: public key already added")
+    else if publicKeysList.size() == 10 then
+        throw("addOwner: too many owners")
+    else
+        let publicKeysListUpdated = publicKeysList :+ publicKey_
+        let publicKeysUpdated = [StringEntry(KEY_PUBLIC_KEYS, makeString(publicKeysListUpdated, SEPARATOR))]
+
+    (publicKeysUpdated, unit)
+}
+
+@Callable(i)
+func removeOwner(publicKey_: String) = {
+    let quorum = getIntegerValue(KEY_QUORUM)
+    let publicKeys = getStringValue(KEY_PUBLIC_KEYS)
+    let publicKeysList = publicKeys.split(SEPARATOR)
+
+    if i.caller != this then
+        throw("removeOwner: not allowed")
+    else if publicKey_ == "" then
+        throw("removeOwner: invalid public key")
+    else if publicKeysList.size() == 1 then
+        throw("removeOwner: too few owners")
+    else
+        let index = match indexOf(publicKeysList, publicKey_) {
+            case a:Int => a
+            case _ => throw("removeOwner: no such owner")
+        }
+        let publicKeysListUpdated = removeByIndex(publicKeysList, index)
+        let publicKeysUpdated = [StringEntry(KEY_PUBLIC_KEYS, makeString(publicKeysListUpdated, SEPARATOR))]
+
+        let quorumUpdated =
+            if quorum > publicKeysListUpdated.size() then
+                [IntegerEntry(KEY_QUORUM, publicKeysListUpdated.size())]
+            else []
+
+    (publicKeysUpdated ++ quorumUpdated, unit)
+}
+
+@Callable(i)
+func setQuorum(quorum_: Int) = {
+    let publicKeys = getStringValue(KEY_PUBLIC_KEYS)
+    let publicKeysList = publicKeys.split(SEPARATOR)
+
+    if i.caller != this then
+        throw("setQuorum: not allowed")
+    else if quorum_ <= 0 || quorum_ > publicKeysList.size() then
+        throw("setQuorum: invalid quorum")
+    else
+        ([IntegerEntry(KEY_QUORUM, quorum_)], unit)
+}
+
+@Callable(i)
+func confirmTransaction(dapp_: String, txId_: String) = {
+    let callerPublicKey = toBase58String(i.callerPublicKey)
+    let quorum = getIntegerValue(KEY_QUORUM)
+    let publicKeys = getStringValue(KEY_PUBLIC_KEYS)
+    let publicKeysList = publicKeys.split(SEPARATOR)
+    let confirmationsKey = makeString([KEY_CONFIRM, dapp_, txId_], SEPARATOR)
+    let confirmations = getString(confirmationsKey).valueOrElse("")
+    let statusKey = makeString([KEY_STATUS, dapp_, txId_], SEPARATOR)
+
+    strict err =
+        if !containsElement(publicKeysList, callerPublicKey) then
+            throw("confirmTransaction: only admin")
+        else if fromBase58String(txId_).size() != 32 then
+            throw("confirmTransaction: invalid txId")
+        else if !_validateAddress(dapp_) then
+            throw("confirmTransaction: invalid dapp address")
+        else if contains(confirmations, callerPublicKey) then
+            throw("confirmTransaction: already confirmed")
+        else unit
+
+    let confirmationsCount = 1 +
+        if confirmations == "" then 
+            0
+        else
+            confirmations.split(SEPARATOR).size()
+
+    let confirmationsUpdated =
+        if confirmations == "" then 
+            callerPublicKey
+        else
+            confirmations + SEPARATOR + callerPublicKey
+
+    (
+        [
+            StringEntry(confirmationsKey, confirmationsUpdated),
+            BooleanEntry(statusKey, confirmationsCount >= quorum)
+        ], unit
+    )
+}
+
+@Callable(i)
+func revokeConfirmation(dapp_: String, txId_: String) = {
+    let callerPublicKey = toBase58String(i.callerPublicKey)
+    let quorum = getIntegerValue(KEY_QUORUM)
+    let publicKeys = getStringValue(KEY_PUBLIC_KEYS)
+    let publicKeysList = publicKeys.split(SEPARATOR)
+    let confirmationsKey = makeString([KEY_CONFIRM, dapp_, txId_], SEPARATOR)
+    let confirmations = getString(confirmationsKey).valueOrElse("")
+    let confirmationsList = confirmations.split(SEPARATOR)
+    let statusKey = makeString([KEY_STATUS, dapp_, txId_], SEPARATOR)
+    let status = getBoolean(statusKey).valueOrElse(false)
+
+    strict err =
+        if !containsElement(publicKeysList, callerPublicKey) then
+            throw("revokeConfirmation: only admin")
+        else if fromBase58String(txId_).size() != 32 then
+            throw("revokeConfirmation: invalid txId")
+        else if !_validateAddress(dapp_) then
+            throw("revokeConfirmation: invalid dapp address")
+        else if !containsElement(confirmationsList, callerPublicKey) then
+            throw("revokeConfirmation: not confirmed")
+        else if status then
+            throw("revokeConfirmation: quorum already reached")
+        else unit
+
+    let confirmationsListUpdated = confirmationsList.removeByIndex(confirmationsList.indexOf(callerPublicKey).value())
+    let confirmationsCount = confirmationsListUpdated.size()
+
+    (
+        [
+            StringEntry(confirmationsKey, makeString(confirmationsListUpdated, SEPARATOR)),
+            BooleanEntry(statusKey, confirmationsCount >= quorum)
+        ], unit
+    )
+}
+
+@Verifier(tx)
+func verify() = {
+    match getString(KEY_MULTISIG) {
+        case multisig: String => 
+            multisig
+                .addressFromStringValue()
+                .getBoolean(makeString([KEY_STATUS, this.toString(), tx.id.toBase58String()], SEPARATOR))
+                .valueOrElse(false)
+        case _ => sigVerify(tx.bodyBytes, tx.proofs[0], tx.senderPublicKey)
+    }
+}

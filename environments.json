@@ -1,0 +1,193 @@
+{
+  "defaultEnvName": "custom",
+  "custom": {
+    "leasingNode": {
+      "infraFee": 250,
+      "maxInfraFee": 10000
+    },
+    "assets": [
+      {
+        "name": "USDN",
+        "description": "Neutrino USD",
+        "quantity": 1000000000000000,
+        "decimals": 6,
+        "assetId": ""
+      },
+      {
+        "name": "WBTC",
+        "description": "Wrapped BTC",
+        "quantity": 100000000000000000,
+        "decimals": 8,
+        "assetId": ""
+      },
+      {
+        "name": "WETH",
+        "description": "Wrapped ETH",
+        "quantity": 100000000000000000,
+        "decimals": 8,
+        "assetId": ""
+      }
+    ],
+    "accounts": [
+      "neo",
+      "morpheus",
+      "trinity",
+      "max",
+      "thomas",
+      "gerry",
+      "jack",
+      "lease_node_1",
+      "tech_acc",
+      "manager",
+      "tech1",
+      "tech2",
+      "tech3",
+      "tech4"
+    ],
+    "amountPerAccount": 22000000000000,
+    "contracts": [],
+    "contractsPath": "ride/",
+    "contractsExtention": ".ride",
+    "amountPerContract": 50000000000000,
+    "amountPerAsset": 22000000000000,
+    "hotWallet": "3MNyNA5QedugKn2G2RcBbMqq4HFNdg5mLwH",
+    "nonceOffset": 1,
+    "network": {
+      "name": "custom",
+      "nodeAPI": "http://localhost:6869",
+      "nodeTimeout": 10000,
+      "chainID": "R",
+      "apiKey": "waves-private-node",
+      "transferFee": 100000,
+      "invokeFee": 500000,
+      "additionalFee": 400000,
+      "issueFee": 100000000,
+      "setScriptFee": 1400000
+    }
+  },
+  "testnet": {
+    "leasingNode": {
+      "infraFee": 2500,
+      "maxInfraFee": 10000
+    },
+    "assets": [
+      {
+        "name": "USDN",
+        "description": "Neutrino USD",
+        "quantity": 1000000000000000,
+        "decimals": 6,
+        "assetId": ""
+      },
+      {
+        "name": "WBTC",
+        "description": "Wrapped BTC",
+        "quantity": 100000000000000000,
+        "decimals": 8,
+        "assetId": ""
+      },
+      {
+        "name": "WETH",
+        "description": "Wrapped ETH",
+        "quantity": 100000000000000000,
+        "decimals": 8,
+        "assetId": ""
+      }
+    ],
+    "accounts": [
+      "neo",
+      "morpheus",
+      "trinity",
+      "max",
+      "thomas",
+      "gerry",
+      "jack",
+      "lease_node_1",
+      "tech_acc",
+      "manager",
+      "tech1",
+      "tech2",
+      "tech3",
+      "tech4"
+    ],
+    "amountPerAccount": 100000000000,
+    "contracts": [],
+    "contractsPath": "ride/",
+    "contractsExtention": ".ride",
+    "amountPerContract": 10000000000,
+    "nonceOffset": 1,
+    "network": {
+      "name": "testnet",
+      "nodeAPI": "https://nodes-testnet.wavesnodes.com",
+      "nodeTimeout": 30000,
+      "chainID": "T",
+      "apiKey": "waves-private-node",
+      "transferFee": 100000,
+      "invokeFee": 500000,
+      "additionalFee": 400000,
+      "issueFee": 100000000,
+      "setScriptFee": 1400000
+    }
+  },
+  "mainnet": {
+    "leasingNode": {
+      "infraFee": 2500,
+      "maxInfraFee": 10000
+    },
+    "assets": [
+      {
+        "name": "USDN",
+        "description": "Neutrino USD",
+        "quantity": 1000000000000000,
+        "decimals": 6,
+        "assetId": ""
+      },
+      {
+        "name": "WBTC",
+        "description": "Wrapped BTC",
+        "quantity": 100000000000000000,
+        "decimals": 8,
+        "assetId": ""
+      },
+      {
+        "name": "WETH",
+        "description": "Wrapped ETH",
+        "quantity": 100000000000000000,
+        "decimals": 8,
+        "assetId": ""
+      }
+    ],
+    "accounts": [
+      "neo",
+      "morpheus",
+      "trinity",
+      "max",
+      "thomas",
+      "gerry",
+      "jack",
+      "lease_node_1",
+      "tech_acc",
+      "manager",
+      "tech1",
+      "tech2",
+      "tech3",
+      "tech4"
+    ],
+    "amountPerAccount": 100000000000,
+    "contracts": [],
+    "contractsPath": "ride/",
+    "contractsExtention": ".ride",
+    "amountPerContract": 10000000000,
+    "network": {
+      "name": "mainnet",
+      "nodeAPI": "https://nodes.wavesnodes.com",
+      "nodeTimeout": 60000,
+      "chainID": "W",
+      "apiKey": "waves-private-node",
+      "transferFee": 100000,
+      "invokeFee": 500000,
+      "additionalFee": 400000,
+      "issueFee": 100000000,
+      "setScriptFee": 1400000
+    }
+  }
+}

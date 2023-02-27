@@ -1,0 +1,294 @@
+{-# SCRIPT_TYPE ACCOUNT #-}
+{-# CONTENT_TYPE DAPP #-}
+{-# STDLIB_VERSION 6 #-}
+
+let SEPARATOR = "__"
+let KEY_INIT = "INIT"
+let KEY_MULTISIG = "MULTISIG"
+let KEY_STATUS = "STATUS"
+let KEY_MINTER = "MINTER"
+let KEY_ASSET = "ASSET"
+let KEY_SPONSORSHIP_MANAGER = "SPONSORSHIP_MANAGER"
+
+let MAX_INT = 9223372036854775807
+
+# ---------- Validation functions ----------
+
+func _validateAddress(address_: String, err_: String) = {
+    match addressFromString(address_) {
+        case a:Address => true
+        case _ => throw(err_)
+    }
+}
+
+func _validateAsset(assetId_: String, err_: String) = {
+    match assetInfo(fromBase58String(assetId_)) {
+        case a:Asset => true
+        case _ => throw(err_)
+    }
+}
+
+func _validateInt(val_: Int, lowerBoundary_: Int, upperBoundary_: Int, err_: String) = {
+    if val_ < lowerBoundary_ || val_ > upperBoundary_ then
+        throw(err_)
+    else true
+}
+
+# ---------- Data structures functions ----------
+
+func _loadInit() = {
+    match getBoolean(KEY_INIT) {
+        case a:Boolean => a
+        case _ => false
+    }
+}
+
+func _saveInit(isInit_: Boolean) = {
+    [BooleanEntry(KEY_INIT, isInit_)]
+}
+
+func _loadMultisig() = {
+    match getString(KEY_MULTISIG) {
+        case a:String => addressFromStringValue(a)
+        case _ => Address(base58'')
+    }
+}
+
+func _saveMultisig(multisig_: Address) = {
+    [StringEntry(KEY_MULTISIG, multisig_.toString())]
+}
+
+func _loadMinter(minter_: Address) = {
+    match getBoolean(makeString([KEY_MINTER, minter_.toString()], SEPARATOR)) {
+        case a:Boolean => a
+        case _ => false
+    }
+}
+
+func _saveMinter(minter_: Address, val_: Boolean) = {
+    [BooleanEntry(makeString([KEY_MINTER, minter_.toString()], SEPARATOR), val_)]
+}
+
+func _loadAsset() = {
+    match getString(KEY_ASSET) {
+        case a:String => fromBase58String(a)
+        case _ => base58''
+    }
+}
+
+func _saveAsset(assetId_: ByteVector) = {
+    [StringEntry(KEY_ASSET, toBase58String(assetId_))]
+}
+
+func _loadSponsorshipManager() = {
+    match getString(KEY_SPONSORSHIP_MANAGER) {
+        case a:String => addressFromStringValue(a)
+        case _ => Address(base58'')
+    }
+}
+
+func _saveSponsorshipManager(manager_: Address) = {
+    [StringEntry(KEY_SPONSORSHIP_MANAGER, manager_.toString())]
+}
+
+# ---------- Ownable functions ----------
+
+func _whenMultisigSet() = {
+    if _loadMultisig() == Address(base58'') then
+        throw("_whenMultisigSet: revert")
+    else true
+}
+
+func _onlyThisContract(caller_: Address) = {
+    if caller_ != this then
+        throw("_onlyThisContract: revert")
+    else true
+}
+
+func _onlyMinter(caller_: Address) = {
+    if !_loadMinter(caller_) then
+        throw("_onlyMinter: revert")
+    else true
+}
+
+func _onlySponsorshipManager(caller_: Address) = {
+    if caller_ != _loadSponsorshipManager() then
+        throw("_onlySponsorshipManager: revert")
+    else true
+}
+
+# ---------- Initializable functions ----------
+
+func _whenNotInitialized() = {
+    if _loadInit() then
+        throw("_whenNotInitialized: revert")
+    else true
+}
+
+func _whenInitialized() = {
+    if !_loadInit() then
+        throw("_whenInitialized: revert")
+    else true
+}
+
+# ---------- Public callable functions ----------
+
+@Callable(i)
+func init(tokenName_: String, tokenDescr_: String, tokenDecimals_: Int) = {
+    strict err =
+        _onlyThisContract(i.caller) &&
+        _whenNotInitialized() &&
+        _whenMultisigSet() &&
+        _validateInt(tokenName_.size(), 4, 16, "init: invalid token name") &&
+        _validateInt(tokenDescr_.size(), 0, 255, "init: invalid token description") &&
+        _validateInt(tokenDecimals_, 0, 8, "init: invalid decimals")
+
+    let issue = Issue(tokenName_, tokenDescr_, 0, tokenDecimals_, true)
+    let assetId = calculateAssetId(issue)
+
+    (
+        _saveInit(true) ++
+        _saveAsset(assetId) ++
+        [issue], unit
+    )
+}
+
+@Callable(i)
+func mint(
+    amount_: Int,
+    recipient_: String
+) = {
+    strict err =
+        _whenInitialized() &&
+        _onlyMinter(i.caller) &&
+        _validateInt(amount_, 0, MAX_INT, "mint: invalid amount") &&
+        _validateAddress(recipient_, "mint: invalid recipient")
+
+    let asset = _loadAsset()
+
+    (
+        [
+            Reissue(asset, amount_, true),
+            ScriptTransfer(addressFromStringValue(recipient_), amount_, asset)
+        ], unit
+    )
+}
+
+@Callable(i)
+func mintMany(
+    amount_: Int,
+    recipients_: List[String]
+) = {
+    strict err =
+        _whenInitialized() &&
+        _onlyMinter(i.caller) &&
+        _validateInt(amount_, 0, MAX_INT, "mint: invalid amount")
+
+    let asset = _loadAsset()
+
+    func foldfunc(acc_: List[ScriptTransfer], elem_: String) = {
+        acc_ :+ ScriptTransfer(addressFromStringValue(elem_), amount_, asset)
+    }
+
+    let actions = FOLD<51>(recipients_, [], foldfunc)
+
+    (
+        [
+            Reissue(asset, amount_ * recipients_.size(), true)
+        ] ++ actions, unit
+    )
+}
+
+@Callable(i)
+func addMinter(minter_: String) = {
+    strict err =
+        _onlyThisContract(i.caller) &&
+        _whenInitialized() &&
+        _validateAddress(minter_, "init: invalid minter")
+
+    (_saveMinter(minter_.addressFromStringValue(), true), unit)
+}
+
+@Callable(i)
+func removeMinter(minter_: String) = {
+    strict err =
+        _onlyThisContract(i.caller) &&
+        _whenInitialized() &&
+        _validateAddress(minter_, "init: invalid minter")
+
+    (_saveMinter(minter_.addressFromStringValue(), false), unit)
+}
+
+@Callable(i)
+func getAssetId() = {
+    ([], _loadAsset())
+}
+
+@Callable(i)
+func getDecimals() = {
+    let decimals = match assetInfo(_loadAsset()) {
+        case a:Asset => a.decimals
+        case _ => throw("getDecimals: revert")
+    }
+
+    ([], decimals)
+}
+
+@Callable(i)
+func setSponsorshipManager(manager_: String) = {
+    strict err =
+        _onlyThisContract(i.caller) &&
+        _validateAddress(manager_, "setSponsorshipManager: invalid manager")
+
+    (_saveSponsorshipManager(addressFromStringValue(manager_)), unit)
+}
+
+@Callable(i)
+func updateSponsorship(minSponsoredAssetFee_: Int, wavesRequiredAmount_: Int) = {
+    strict err =
+        _onlySponsorshipManager(i.caller) &&
+        _validateInt(minSponsoredAssetFee_, 0, MAX_INT, "updateSponsorship: invalid sponsor fee") &&
+        _validateInt(wavesRequiredAmount_, 0, MAX_INT, "updateSponsorship: invalid waves required amount")
+
+    let sponsorAsset = _loadAsset()
+    let sponsorAmount = assetBalance(this, sponsorAsset)
+    let minSponsoredAssetFee =
+        if minSponsoredAssetFee_ == 0 then
+            unit
+        else
+            minSponsoredAssetFee_
+
+    let actions =
+        if wavesBalance(this).regular > wavesRequiredAmount_ then
+            [ScriptTransfer(i.caller, wavesBalance(this).regular - wavesRequiredAmount_, unit)]
+        else []
+
+    (
+        actions ++
+        [
+            ScriptTransfer(i.caller, sponsorAmount, sponsorAsset),
+            SponsorFee(sponsorAsset, minSponsoredAssetFee)
+        ], sponsorAmount
+    )
+}
+
+@Callable(i)
+func setMultisig(multisig_: String) = {
+    strict err =
+        _onlyThisContract(i.caller) &&
+        _validateAddress(multisig_, "setMultisig: invalid multisig")
+
+    (_saveMultisig(addressFromStringValue(multisig_)), unit)
+}
+
+@Verifier(tx)
+func verify() = {
+    match getString(KEY_MULTISIG) {
+        case multisig: String => 
+            multisig
+                .addressFromStringValue()
+                .getBoolean(makeString([KEY_STATUS, this.toString(), tx.id.toBase58String()], SEPARATOR))
+                .valueOrElse(false)
+        case _ => sigVerify(tx.bodyBytes, tx.proofs[0], tx.senderPublicKey)
+    }
+}

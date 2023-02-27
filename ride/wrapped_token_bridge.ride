@@ -1,0 +1,577 @@
+{-# SCRIPT_TYPE ACCOUNT #-}
+{-# CONTENT_TYPE DAPP #-}
+{-# STDLIB_VERSION 6 #-}
+
+let SEPARATOR = "__"
+let KEY_INIT = "INIT"
+let KEY_MULTISIG = "MULTISIG"
+let KEY_STATUS = "STATUS"
+let KEY_PAUSED = "PAUSED"
+let KEY_PAUSER = "PAUSER"
+let KEY_EXECUTOR = "EXECUTOR"
+let KEY_ROOT_ADAPTER = "ROOT_ADAPTER"
+let KEY_CALLER_CONTRACT = "CALLER_CONTRACT"
+let KEY_CHAIN = "CHAIN"
+let KEY_BINDING = "BINDING"
+let KEY_FEE = "FEE"
+let KEY_FEE_RECIPIENT = "FEE_RECIPIENT"
+
+let FUNC_RELEASE_TOKENS = "releaseTokens"
+let WAVES = "WAVES"
+let WAVES_DECIMALS = 8
+let DECIMALS = 6
+let PERCENT_FACTOR = 1000000
+let MAX_INT = 9223372036854775807
+
+# ---------- Validation functions ----------
+
+func _validateAddress(address_: String, err_: String) = {
+    match addressFromString(address_) {
+        case a:Address => true
+        case _ => throw(err_)
+    }
+}
+
+func _validateAsset(assetId_: String, err_: String) = {
+    match assetInfo(fromBase58String(assetId_)) {
+        case a:Asset => true
+        case _ => throw(err_)
+    }
+}
+
+func _validateInt(val_: Int, lowerBoundary_: Int, upperBoundary_: Int, err_: String) = {
+    if val_ < lowerBoundary_ || val_ > upperBoundary_ then
+        throw(err_)
+    else true
+}
+
+func _validateBool(val_: Boolean, target_: Boolean, err_: String) = {
+    if val_ != target_ then
+        throw(err_)
+    else true
+}
+
+func _validatePaymentsSize(payments_: List[AttachedPayment], target_: Int, err_: String) = {
+    if payments_.size() != target_ then
+        throw(err_)
+    else true
+}
+
+func _validatePaymentAsset(payment_: AttachedPayment, asset_: ByteVector|Unit, err_: String) = {
+    if payment_.assetId != asset_ then
+        throw(err_)
+    else true
+}
+
+# ---------- Utils functions ----------
+
+func _normalizeDecimals(amount_: Int, sourceDecimals_: Int, targetDecimals_: Int) = {
+    if sourceDecimals_ >= targetDecimals_ then
+        amount_ / pow(10, 0, sourceDecimals_ - targetDecimals_, 0, 0, DOWN)
+    else
+        amount_ * pow(10, 0, targetDecimals_ - sourceDecimals_, 0, 0, DOWN)
+}
+
+# ---------- Data structures functions ----------
+
+func _loadInit() = {
+    match getBoolean(KEY_INIT) {
+        case a:Boolean => a
+        case _ => false
+    }
+}
+
+func _saveInit(isInit_: Boolean) = {
+    [BooleanEntry(KEY_INIT, isInit_)]
+}
+
+func _loadPause() = {
+    match getBoolean(KEY_PAUSED) {
+        case a:Boolean => a
+        case _ => false
+    }
+}
+
+func _savePause(isPaused_: Boolean) = {
+    [BooleanEntry(KEY_PAUSED, isPaused_)]
+}
+
+func _loadPauser() = {
+    match getString(KEY_PAUSER) {
+        case a:String => addressFromStringValue(a)
+        case _ => Address(base58'')
+    }
+}
+
+func _savePauser(pauser_: Address) = {
+    [StringEntry(KEY_PAUSER, pauser_.toString())]
+}
+
+func _loadMultisig() = {
+    match getString(KEY_MULTISIG) {
+        case a:String => addressFromStringValue(a)
+        case _ => Address(base58'')
+    }
+}
+
+func _saveMultisig(multisig_: Address) = {
+    [StringEntry(KEY_MULTISIG, multisig_.toString())]
+}
+
+func _loadExecutor() = {
+    match getString(KEY_EXECUTOR) {
+        case a:String => addressFromStringValue(a)
+        case _ => Address(base58'')
+    }
+}
+
+func _saveExecutor(executor_: Address) = {
+    [StringEntry(KEY_EXECUTOR, executor_.toString())]
+}
+
+func _loadCallerContract() = {
+    match getString(KEY_CALLER_CONTRACT) {
+        case a:String => a
+        case _ => ""
+    }
+}
+
+func _saveCallerContract(caller_: String) = {
+    [StringEntry(KEY_CALLER_CONTRACT, caller_)]
+}
+
+func _loadChain(chainId_: Int) = {
+    match getBoolean(makeString([KEY_CHAIN, chainId_.toString()], SEPARATOR)) {
+        case a:Boolean => a
+        case _ => false
+    }
+}
+
+func _saveChain(chainId_: Int, val_: Boolean) = {
+    [BooleanEntry(makeString([KEY_CHAIN, chainId_.toString()], SEPARATOR), val_)]
+}
+
+func _loadBinding(executionChainId_: Int, assetId_: ByteVector) = {
+    match getString(makeString([KEY_BINDING, executionChainId_.toString(), assetId_.toBase58String()], SEPARATOR)) {
+        case a:String =>
+            let struct = a.split(SEPARATOR)
+            (
+                struct[0],                                  # executionAsset_
+                struct[1].parseIntValue(),                  # minAmount_
+                struct[2].parseIntValue(),                  # minFee_
+                struct[3].parseIntValue(),                  # thresholdFee_
+                struct[4].parseIntValue(),                  # beforePercentFee_
+                struct[5].parseIntValue(),                  # afterPercentFee_
+                if struct[6] == "1" then true else false    # enabled_
+            )
+        case _ => ("", 0, 0, 0, 0, 0, false)
+    }
+}
+
+func _saveBinding(executionChainId_: Int, assetId_: ByteVector, binding_: (String, Int, Int, Int, Int, Int, Boolean)) = {
+    [StringEntry(
+        makeString([KEY_BINDING, executionChainId_.toString(), assetId_.toBase58String()], SEPARATOR),
+        makeString([
+            binding_._1,                                # executionAsset_
+            binding_._2.toString(),                     # minAmount_
+            binding_._3.toString(),                     # minFee_
+            binding_._4.toString(),                     # thresholdFee_
+            binding_._5.toString(),                     # beforePercentFee_
+            binding_._6.toString(),                     # afterPercentFee_
+            if binding_._7 then "1" else "0"            # enabled_
+        ], SEPARATOR)
+    )]
+}
+
+func _loadFee(assetId_: ByteVector) = {
+    match getInteger(makeString([KEY_FEE, assetId_.toBase58String()], SEPARATOR)) {
+        case a:Int => a
+        case _ => 0
+    }
+}
+
+func _saveFee(assetId_: ByteVector, val_: Int) = {
+    [IntegerEntry(makeString([KEY_FEE, assetId_.toBase58String()], SEPARATOR), val_)]
+}
+
+func _loadRootAdapter() = {
+    match getString(KEY_ROOT_ADAPTER) {
+        case a:String => addressFromStringValue(a)
+        case _ => Address(base58'')
+    }
+}
+
+func _saveRootAdapter(adapter_: Address) = {
+    [StringEntry(KEY_ROOT_ADAPTER, adapter_.toString())]
+}
+
+func _loadFeeRecipient() = {
+    match getString(KEY_FEE_RECIPIENT) {
+        case a:String => a.addressFromStringValue()
+        case _ => Address(base58'')
+    }
+}
+
+func _saveFeeRecipient(val_: Address) = {
+    [StringEntry(KEY_FEE_RECIPIENT, val_.toString())]
+}
+
+# ---------- Ownable functions ----------
+
+func _onlyThisContract(caller_: Address) = {
+    if caller_ != this then
+        throw("_onlyThisContract: revert")
+    else true
+}
+
+func _whenMultisigSet() = {
+    if _loadMultisig() == Address(base58'') then
+        throw("_whenMultisigSet: revert")
+    else true
+}
+
+# ---------- Initializable functions ----------
+
+func _whenNotInitialized() = {
+    if _loadInit() then
+        throw("_whenNotInitialized: revert")
+    else true
+}
+
+func _whenInitialized() = {
+    if !_loadInit() then
+        throw("_whenInitialized: revert")
+    else true
+}
+
+# ---------- Pausable functions ----------
+
+func _whenNotPaused() = {
+    if _loadPause() then
+        throw("_whenNotPaused: revert")
+    else true
+}
+
+func _whenPaused() = {
+    if !_loadPause() then
+        throw("_whenPaused: revert")
+    else true
+}
+
+func _onlyPauser(caller_: Address) = {
+    if caller_ != _loadPauser() then
+        throw("_onlyPauser: revert")
+    else true
+}
+
+# ---------- Convertion functions ----------
+
+func _asInt(val_: Any) = {
+    match val_ {
+        case a:Int => a
+        case _ => throw("_asInt: revert")
+    }
+}
+
+func _asBytes(val_: Any) = {
+    match val_ {
+        case a:ByteVector => a
+        case _ => throw("_asBytes: revert")
+    }
+}
+
+# ---------- Protocol validators ----------
+
+func _validateExecutor(val_: Address, err_: String) = {
+    if val_ != _loadExecutor() then
+        throw(err_)
+    else true
+}
+
+func _validateCaller(val_: String, err_: String) = {
+    if val_ != _loadCallerContract() then
+        throw(err_)
+    else true
+}
+
+func _validateChain(executionChainId_: Int, err_: String) = {
+    if !_loadChain(executionChainId_) then
+        throw(err_)
+    else true
+}
+
+# ---------- Public callable functions ----------
+
+@Callable(i)
+func init(executor_: String, adapter_: String, pauser_: String, feeRecipient_: String) = {
+    strict err =
+        _onlyThisContract(i.caller) &&
+        _whenNotInitialized() &&
+        _whenMultisigSet() &&
+        _validateAddress(executor_, "init: invalid executor") &&
+        _validateAddress(adapter_, "init: invalid adapter") &&
+        _validateAddress(pauser_, "init: invalid pauser") &&
+        _validateAddress(feeRecipient_, "init: invalid feeRecipient")
+
+    (
+        _saveInit(true) ++
+        _saveExecutor(executor_.addressFromStringValue()) ++
+        _saveRootAdapter(adapter_.addressFromStringValue()) ++
+        _savePauser(pauser_.addressFromStringValue()) ++
+        _saveFeeRecipient(feeRecipient_.addressFromStringValue()),
+        unit
+    )
+}
+
+@Callable(i)
+func mintTokens(
+    callerContract_: String,
+    assetContract_: String,
+    amount_: Int,
+    recipient_: String,
+    gaslessReward_: Int,
+    referrer_: String,
+    referrerFee_: Int
+) = {
+    strict err =
+        _whenInitialized() &&
+        _whenNotPaused() &&
+        _validateAddress(assetContract_, "mint: invalid asset contract") &&
+        _validateExecutor(i.caller, "mint: invalid executor") &&
+        _validateCaller(callerContract_, "mint: invalid caller") &&
+        _validateAddress(recipient_, "mint: invalid recipient address") &&
+        _validateInt(amount_, 0, MAX_INT, "mint: invalid amount") &&
+        _validateInt(gaslessReward_, 0, MAX_INT, "mint: invalid gaslessReward") &&
+        _validateInt(referrerFee_, 0, MAX_INT, "mint: invalid referrer fee")
+
+    strict assetId = invoke(assetContract_.addressFromStringValue(), "getAssetId", [], [])._asBytes()
+    strict assetDecimals = invoke(assetContract_.addressFromStringValue(), "getDecimals", [], [])._asInt()
+
+    let normalizedAmount = _normalizeDecimals(amount_, DECIMALS, assetDecimals)
+    let normalizedGasless = _normalizeDecimals(gaslessReward_, DECIMALS, assetDecimals)
+
+    let referrer =
+        match referrer_.addressFromString() {
+            case refererAddress: Address =>
+                let normalizedReferrerFee = _normalizeDecimals(referrerFee_, DECIMALS, assetDecimals)
+
+                (
+                    normalizedReferrerFee,
+                    [ScriptTransfer(refererAddress, normalizedReferrerFee, assetId)]
+                )
+            case _ => (0, [])
+        }
+
+    let referrerFee = referrer._1
+    let referrerActions = referrer._2
+
+    strict invocation = invoke(assetContract_.addressFromStringValue(), "mint", [normalizedAmount + referrerFee, this.toString()], [])
+
+    let actions =
+        if normalizedGasless > 0 && addressFromStringValue(recipient_) != i.originCaller then
+
+            [
+                ScriptTransfer(addressFromStringValue(recipient_), normalizedAmount - normalizedGasless, assetId),
+                ScriptTransfer(i.originCaller, normalizedGasless, assetId)
+            ]
+        else
+            [
+                ScriptTransfer(addressFromStringValue(recipient_), normalizedAmount, assetId)
+            ]
+
+    (actions ++ referrerActions, unit)
+}
+
+@Callable(i)
+func burnTokens(
+    executionChainId_: Int,
+    assetContract_: String,
+    amount_: Int,
+    recipient_: String,
+    gaslessReward_: Int
+) = {
+    strict err =
+        _whenInitialized() &&
+        _whenNotPaused() &&
+        _validateAddress(assetContract_, "burn: invalid asset contract") &&
+        _validateChain(executionChainId_, "burn: invalid execution chain") &&
+        _validatePaymentsSize(i.payments, 1, "burn: no payment") &&
+        _validateInt(i.payments[0].amount, amount_, MAX_INT, "burn: invalid payment amount")
+
+    strict assetId = invoke(assetContract_.addressFromStringValue(), "getAssetId", [], [])._asBytes()
+    strict assetDecimals = invoke(assetContract_.addressFromStringValue(), "getDecimals", [], [])._asInt()
+
+    let binding = _loadBinding(executionChainId_, assetId)
+    let executionAsset = binding._1
+    let minAmount = binding._2
+    let minFee = binding._3
+    let thresholdFee = binding._4
+    let beforePercentFee = binding._5
+    let afterPercentFee = binding._6
+    let enabled = binding._7
+
+    strict err1 =
+        _validatePaymentAsset(i.payments[0], assetId, "burn: invalid payment asset") &&
+        _validateInt(amount_, minAmount, MAX_INT, "burn: less than min") &&
+        _validateBool(enabled, true, "burn: token is disabled")
+
+    let percent = if amount_ > thresholdFee then afterPercentFee else beforePercentFee
+    let fee = minFee + (amount_ * percent) / PERCENT_FACTOR
+    strict err2 = _validateInt(amount_, fee + 1, MAX_INT, "burn: fee more than amount")
+
+    let amountToSend = amount_ - fee
+    strict err3 = _validateInt(amountToSend, gaslessReward_ + 1, MAX_INT, "burn: reward more than amount")
+
+    let updateFee = _loadFee(assetId) + fee
+
+    let normalizedAmount = _normalizeDecimals(amountToSend, assetDecimals, DECIMALS)
+    let normalizedGasless = _normalizeDecimals(gaslessReward_, assetDecimals, DECIMALS)
+
+    strict invocation = invoke(_loadRootAdapter(), FUNC_RELEASE_TOKENS, [
+        executionChainId_,
+        executionAsset,
+        normalizedAmount,
+        recipient_,
+        normalizedGasless
+    ], [])
+
+    (
+        _saveFee(assetId, updateFee) ++
+        [Burn(assetId, amountToSend)],
+        unit
+    )
+}
+
+@Callable(i)
+func transferFee(assetContract_: String) = {
+    strict err =
+        _whenInitialized() &&
+        _whenNotPaused() &&
+        _validateAddress(assetContract_, "burnFee: invalid asset contract")
+
+    strict assetId = invoke(assetContract_.addressFromStringValue(), "getAssetId", [], [])._asBytes()
+
+    (
+        _saveFee(assetId, 0) ++
+        [ScriptTransfer(_loadFeeRecipient(), _loadFee(assetId), assetId)],
+        unit
+    )
+}
+
+@Callable(i)
+func updateCallerContract(callerContract_: String) = {
+    strict err =
+        _onlyThisContract(i.caller) &&
+        _whenInitialized()
+
+    (_saveCallerContract(callerContract_), unit)
+}
+
+@Callable(i)
+func updateExecutionChain(executionChainId_: Int, enabled_: Boolean) = {
+    strict err =
+        _onlyThisContract(i.caller) &&
+        _whenInitialized() &&
+        _validateInt(executionChainId_, 0, MAX_INT, "updateExecutionChain: invalid executionChainId")
+
+    (_saveChain(executionChainId_, enabled_), unit)
+}
+
+@Callable(i)
+func updateFeeRecipient(feeRecipient_: String) = {
+    strict err =
+        _onlyThisContract(i.caller) &&
+        _whenInitialized() &&
+        _validateAddress(feeRecipient_, "updateFeeRecipient: invalid feeRecipient")
+
+    (_saveFeeRecipient(feeRecipient_.addressFromStringValue()), unit)
+}
+
+@Callable(i)
+func updateBindingInfo(
+    executionChainId_: Int,
+    assetContract_: String,
+    executionAsset_: String,
+    minAmount_: Int,
+    minFee_: Int,
+    thresholdFee_: Int,
+    beforePercentFee_: Int,
+    afterPercentFee_: Int,
+    enabled_: Boolean
+) = {
+    strict err =
+        _onlyThisContract(i.caller) &&
+        _whenInitialized() &&
+        _validateAddress(assetContract_, "updateBindingInfo: invalid asset contract") &&
+        _validateInt(executionChainId_, 0, MAX_INT, "updateBindingInfo: invalid executionChainId") &&
+        _validateInt(minAmount_, 0, MAX_INT, "updateBindingInfo: invalid minAmount") &&
+        _validateInt(minFee_, 0, MAX_INT, "updateBindingInfo: invalid minFee") &&
+        _validateInt(thresholdFee_, 0, MAX_INT, "updateBindingInfo: invalid thresholdFee") &&
+        _validateInt(beforePercentFee_, 0, MAX_INT, "updateBindingInfo: invalid beforePercentFee") &&
+        _validateInt(afterPercentFee_, 0, MAX_INT, "updateBindingInfo: invalid afterPercentFee")
+
+    strict assetId = invoke(assetContract_.addressFromStringValue(), "getAssetId", [], [])._asBytes()
+
+    let binding = (
+        executionAsset_,
+        minAmount_,
+        minFee_,
+        thresholdFee_,
+        beforePercentFee_,
+        afterPercentFee_,
+        enabled_
+    )
+
+    (_saveBinding(executionChainId_, assetId, binding), unit)
+}
+
+@Callable(i)
+func pause() = {
+    strict err =
+        _onlyPauser(i.caller) &&
+        _whenInitialized() &&
+        _whenNotPaused()
+
+    (_savePause(true), unit)
+}
+
+@Callable(i)
+func unpause() = {
+    strict err =
+        _onlyPauser(i.caller) &&
+        _whenInitialized() &&
+        _whenPaused()
+
+    (_savePause(false), unit)
+}
+
+@Callable(i)
+func updatePauser(pauser_: String) = {
+    strict err =
+        _onlyThisContract(i.caller) &&
+        _whenInitialized() &&
+        _validateAddress(pauser_, "init: invalid pauser")
+
+    (_savePauser(addressFromStringValue(pauser_)), unit)
+}
+
+@Callable(i)
+func setMultisig(multisig_: String) = {
+    strict err =
+        _onlyThisContract(i.caller) &&
+        _validateAddress(multisig_, "setMultisig: invalid multisig")
+
+    (_saveMultisig(addressFromStringValue(multisig_)), unit)
+}
+
+@Verifier(tx)
+func verify() = {
+    match getString(KEY_MULTISIG) {
+        case multisig: String => 
+            multisig
+                .addressFromStringValue()
+                .getBoolean(makeString([KEY_STATUS, this.toString(), tx.id.toBase58String()], SEPARATOR))
+                .valueOrElse(false)
+        case _ => sigVerify(tx.bodyBytes, tx.proofs[0], tx.senderPublicKey)
+    }
+}

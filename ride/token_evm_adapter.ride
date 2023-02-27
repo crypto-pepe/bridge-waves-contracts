@@ -1,0 +1,332 @@
+{-# SCRIPT_TYPE ACCOUNT #-}
+{-# CONTENT_TYPE DAPP #-}
+{-# STDLIB_VERSION 6 #-}
+
+let SEPARATOR = "__"
+let KEY_INIT = "INIT"
+let KEY_MULTISIG = "MULTISIG"
+let KEY_STATUS = "STATUS"
+let KEY_PAUSED = "PAUSED"
+let KEY_PAUSER = "PAUSER"
+let KEY_ROOT_ADAPTER = "ROOT_ADAPTER"
+let KEY_PROTOCOL_CALLER = "PROTOCOL_CALLER"
+let KEY_NATIVE_TOKEN_BRIDGE_CONTRACT = "NATIVE_TOKEN_BRIDGE_CONTRACT"
+let KEY_ERC20_TOKEN_BRIDGE_CONTRACT = "ERC20_TOKEN_BRIDGE_CONTRACT"
+
+let FUNC_CALL = "call"
+
+let MAX_INT = 9223372036854775807
+let SLOT_SIZE = 32
+let ZERO_SLOT = base16'0000000000000000000000000000000000000000000000000000000000000000'
+let ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
+
+# ---------- Validation functions ----------
+
+func _validateAddress(address_: String, err_: String) = {
+    match addressFromString(address_) {
+        case a:Address => true
+        case _ => throw(err_)
+    }
+}
+
+# ---------- Data structures functions ----------
+
+func _loadInit() = {
+    match getBoolean(KEY_INIT) {
+        case a:Boolean => a
+        case _ => false
+    }
+}
+
+func _saveInit(isInit_: Boolean) = {
+    [BooleanEntry(KEY_INIT, isInit_)]
+}
+
+func _loadPause() = {
+    match getBoolean(KEY_PAUSED) {
+        case a:Boolean => a
+        case _ => false
+    }
+}
+
+func _savePause(isPaused_: Boolean) = {
+    [BooleanEntry(KEY_PAUSED, isPaused_)]
+}
+
+func _loadPauser() = {
+    match getString(KEY_PAUSER) {
+        case a:String => addressFromStringValue(a)
+        case _ => Address(base58'')
+    }
+}
+
+func _savePauser(pauser_: Address) = {
+    [StringEntry(KEY_PAUSER, pauser_.toString())]
+}
+
+func _loadMultisig() = {
+    match getString(KEY_MULTISIG) {
+        case a:String => addressFromStringValue(a)
+        case _ => Address(base58'')
+    }
+}
+
+func _saveMultisig(multisig_: Address) = {
+    [StringEntry(KEY_MULTISIG, multisig_.toString())]
+}
+
+func _loadRootAdapter() = {
+    match getString(KEY_ROOT_ADAPTER) {
+        case a:String => addressFromStringValue(a)
+        case _ => Address(base58'')
+    }
+}
+
+func _saveRootAdapter(adapter_: Address) = {
+    [StringEntry(KEY_ROOT_ADAPTER, adapter_.toString())]
+}
+
+func _loadProtocolCaller() = {
+    match getString(KEY_PROTOCOL_CALLER) {
+        case a:String => addressFromStringValue(a)
+        case _ => Address(base58'')
+    }
+}
+
+func _saveProtocolCaller(caller_: Address) = {
+    [StringEntry(KEY_PROTOCOL_CALLER, caller_.toString())]
+}
+
+func _loadNativeTokenBridgeContract() = {
+    match getString(KEY_NATIVE_TOKEN_BRIDGE_CONTRACT) {
+        case a:String => a
+        case _ => ""
+    }
+}
+
+func _saveNativeTokenBridgeContract(contract_: String) = {
+    [StringEntry(KEY_NATIVE_TOKEN_BRIDGE_CONTRACT, contract_)]
+}
+
+func _loadERC20TokenBridgeContract() = {
+    match getString(KEY_ERC20_TOKEN_BRIDGE_CONTRACT) {
+        case a:String => a
+        case _ => ""
+    }
+}
+
+func _saveERC20TokenBridgeContract(contract_: String) = {
+    [StringEntry(KEY_ERC20_TOKEN_BRIDGE_CONTRACT, contract_)]
+}
+
+# ---------- Ownable functions ----------
+
+func _onlyThisContract(caller_: Address) = {
+    if caller_ != this then
+        throw("_onlyThisContract: revert")
+    else true
+}
+
+func _whenMultisigSet() = {
+    if _loadMultisig() == Address(base58'') then
+        throw("_whenMultisigSet: revert")
+    else true
+}
+
+# ---------- Initializable functions ----------
+
+func _whenNotInitialized() = {
+    if _loadInit() then
+        throw("_whenNotInitialized: revert")
+    else true
+}
+
+func _whenInitialized() = {
+    if !_loadInit() then
+        throw("_whenInitialized: revert")
+    else true
+}
+
+# ---------- Pausable functions ----------
+
+func _whenNotPaused() = {
+    if _loadPause() then
+        throw("_whenNotPaused: revert")
+    else true
+}
+
+func _whenPaused() = {
+    if !_loadPause() then
+        throw("_whenPaused: revert")
+    else true
+}
+
+func _onlyPauser(caller_: Address) = {
+    if caller_ != _loadPauser() then
+        throw("_onlyPauser: revert")
+    else true
+}
+
+# ---------- Adapter modifiers ----------
+
+func _isRootAdapter(caller_: Address) = {
+    if _loadRootAdapter() != caller_ then
+        throw("_isRootAdapter: revert")
+    else true
+}
+
+# ---------- ABI helper functions ----------
+
+func _alignLeft(val_: ByteVector) = {
+    val_ + ZERO_SLOT.take(SLOT_SIZE - size(val_))
+}
+
+func _alignRight(val_: ByteVector) = {
+    ZERO_SLOT.take(SLOT_SIZE - size(val_)) + val_
+}
+
+# ---------- Public callable functions ----------
+
+@Callable(i)
+func init(protocolCaller_: String, rootAdapter_: String, pauser_: String) = {
+    strict err =
+        _onlyThisContract(i.caller) &&
+        _whenNotInitialized() &&
+        _whenMultisigSet() &&
+        _validateAddress(protocolCaller_, "init: invalid protocolCaller") &&
+        _validateAddress(rootAdapter_, "init: invalid rootAdapter") &&
+        _validateAddress(pauser_, "init: invalid pauser")
+
+    (
+        _saveInit(true) ++
+        _saveProtocolCaller(protocolCaller_.addressFromStringValue()) ++
+        _saveRootAdapter(rootAdapter_.addressFromStringValue()) ++
+        _savePauser(pauser_.addressFromStringValue()),
+        unit
+    )
+}
+
+@Callable(i)
+func releaseTokens(
+    executionChainId_: Int,
+    executionAsset_: String,
+    amount_: Int,
+    recipient_: String,
+    gaslessReward_: Int
+) = {
+    strict err =
+        _whenInitialized() &&
+        _whenNotPaused() &&
+        _isRootAdapter(i.caller)
+
+    let executionAssetBytes = executionAsset_.drop(2).fromBase16String()._alignRight()
+    let recipientBytes = recipient_.drop(2).fromBase16String()._alignRight()
+    let amountBytes = amount_.toBytes()._alignRight()
+    let gaslessRewardBytes = gaslessReward_.toBytes()._alignRight()
+
+    let callArgs =
+        if executionAsset_ == ZERO_ADDRESS then
+            (
+                _loadNativeTokenBridgeContract(),
+                "0x" + (
+                    base16'a7392f8eabab' +
+                    ZERO_SLOT +
+                    recipientBytes +
+                    amountBytes +
+                    gaslessRewardBytes
+                ).toBase16String()
+            )
+        else
+            (
+                _loadERC20TokenBridgeContract(),
+                "0x" + (
+                    base16'5a6c22aeabab' +
+                    ZERO_SLOT +
+                    executionAssetBytes +
+                    recipientBytes +
+                    amountBytes +
+                    gaslessRewardBytes
+                ).toBase16String()
+            )
+
+    strict invocation = invoke(
+        _loadProtocolCaller(),
+        FUNC_CALL, [
+            executionChainId_,
+            callArgs._1,
+            callArgs._2
+        ],
+        []
+    )
+
+    ([], unit)
+}
+
+@Callable(i)
+func setNativeTokenBridgeContract(contract_: String) = {
+    strict err =
+        _onlyThisContract(i.caller) &&
+        _whenInitialized()
+
+    (_saveNativeTokenBridgeContract(contract_), unit)
+}
+
+@Callable(i)
+func setERC20TokenBridgeContract(contract_: String) = {
+    strict err =
+        _onlyThisContract(i.caller) &&
+        _whenInitialized()
+
+    (_saveERC20TokenBridgeContract(contract_), unit)
+}
+
+@Callable(i)
+func pause() = {
+    strict err =
+        _onlyPauser(i.caller) &&
+        _whenInitialized() &&
+        _whenNotPaused()
+
+    (_savePause(true), unit)
+}
+
+@Callable(i)
+func unpause() = {
+    strict err =
+        _onlyPauser(i.caller) &&
+        _whenInitialized() &&
+        _whenPaused()
+
+    (_savePause(false), unit)
+}
+
+@Callable(i)
+func updatePauser(pauser_: String) = {
+    strict err =
+        _onlyThisContract(i.caller) &&
+        _whenInitialized() &&
+        _validateAddress(pauser_, "init: invalid pauser")
+
+    (_savePauser(addressFromStringValue(pauser_)), unit)
+}
+
+@Callable(i)
+func setMultisig(multisig_: String) = {
+    strict err =
+        _onlyThisContract(i.caller) &&
+        _validateAddress(multisig_, "setMultisig: invalid multisig")
+
+    (_saveMultisig(addressFromStringValue(multisig_)), unit)
+}
+
+@Verifier(tx)
+func verify() = {
+    match getString(KEY_MULTISIG) {
+        case multisig: String => 
+            multisig
+                .addressFromStringValue()
+                .getBoolean(makeString([KEY_STATUS, this.toString(), tx.id.toBase58String()], SEPARATOR))
+                .valueOrElse(false)
+        case _ => sigVerify(tx.bodyBytes, tx.proofs[0], tx.senderPublicKey)
+    }
+}

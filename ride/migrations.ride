@@ -1,0 +1,23 @@
+{-# STDLIB_VERSION 6 #-}
+{-# CONTENT_TYPE DAPP #-}
+{-# SCRIPT_TYPE ACCOUNT #-}
+
+@Callable(i)
+func setCompleted(completed: Int) = {
+    let caller = toBase58String(i.caller.bytes)
+    let owner = getStringValue("OWNER")
+
+    strict err = 
+        if caller != owner then
+            throw("not allowed")
+        else unit
+
+    [
+        IntegerEntry("LAST_COMPLETED_MIGRATION", completed)
+    ]
+}
+
+@Verifier(tx)
+func verify() = {
+    sigVerify(tx.bodyBytes, tx.proofs[0], tx.senderPublicKey)
+}

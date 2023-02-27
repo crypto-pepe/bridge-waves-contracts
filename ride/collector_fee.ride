@@ -1,0 +1,93 @@
+{-# STDLIB_VERSION 6 #-}
+{-# CONTENT_TYPE DAPP #-}
+{-# SCRIPT_TYPE ACCOUNT #-}
+
+let SEPARATOR = "__"
+let KEY_INIT = "INIT"
+let KEY_MULTISIG = "MULTISIG"
+let KEY_STATUS = "STATUS"
+
+let MAX_INT = 9223372036854775807
+
+# ---------- Validation functions ----------
+
+func _validateAddress(address_: String, err_: String) = {
+    match addressFromString(address_) {
+        case a:Address => true
+        case _ => throw(err_)
+    }
+}
+
+func _validateAsset(assetId_: String, err_: String) = {
+    match assetInfo(fromBase58String(assetId_)) {
+        case a:Asset => true
+        case _ => throw(err_)
+    }
+}
+
+func _validateInt(val_: Int, lowerBoundary_: Int, upperBoundary_: Int, err_: String) = {
+    if val_ < lowerBoundary_ || val_ > upperBoundary_ then
+        throw(err_)
+    else true
+}
+
+# ---------- Data structures functions ----------
+
+func _loadInit() = {
+    match getBoolean(KEY_INIT) {
+        case a:Boolean => a
+        case _ => false
+    }
+}
+
+func _saveInit(isInit_: Boolean) = {
+    [BooleanEntry(KEY_INIT, isInit_)]
+}
+
+func _loadMultisig() = {
+    match getString(KEY_MULTISIG) {
+        case a:String => addressFromStringValue(a)
+        case _ => Address(base58'')
+    }
+}
+
+func _saveMultisig(multisig_: Address) = {
+    [StringEntry(KEY_MULTISIG, multisig_.toString())]
+}
+
+# ---------- Ownable functions ----------
+
+func _whenMultisigSet() = {
+    if _loadMultisig() == Address(base58'') then
+        throw("_whenMultisigSet: revert")
+    else true
+}
+
+func _onlyThisContract(caller_: Address) = {
+    if caller_ != this then
+        throw("_onlyThisContract: revert")
+    else true
+}
+
+# ---------- Public callable functions ----------
+
+@Callable(i)
+func setMultisig(multisig_: String) = {
+    strict err =
+        _onlyThisContract(i.caller) &&
+        _validateAddress(multisig_, "setMultisig: invalid multisig")
+
+    (_saveMultisig(addressFromStringValue(multisig_)), unit)
+}
+
+@Verifier(tx)
+func verify() = {
+    match getString(KEY_MULTISIG) {
+        case multisig: String => 
+            multisig
+                .addressFromStringValue()
+                .getBoolean(makeString([KEY_STATUS, this.toString(), tx.id.toBase58String()], SEPARATOR))
+                .valueOrElse(false)
+        case _ => sigVerify(tx.bodyBytes, tx.proofs[0], tx.senderPublicKey)
+    }
+}
