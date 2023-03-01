@@ -57,12 +57,6 @@ func _validatePaymentsSize(payments_: List[AttachedPayment], target_: Int, err_:
     else true
 }
 
-func _validatePaymentAsset(payment_: AttachedPayment, asset_: ByteVector|Unit, err_: String) = {
-    if payment_.assetId != asset_ then
-        throw(err_)
-    else true
-}
-
 # ---------- Utils functions ----------
 
 func _normalizeDecimals(amount_: Int, sourceDecimals_: Int, targetDecimals_: Int) = {
@@ -156,29 +150,31 @@ func _loadBinding(executionChainId_: Int, assetId_: ByteVector) = {
         case a:String =>
             let struct = a.split(SEPARATOR)
             (
-                struct[0],                                  # executionAsset_
-                struct[1].parseIntValue(),                  # minAmount_
-                struct[2].parseIntValue(),                  # minFee_
-                struct[3].parseIntValue(),                  # thresholdFee_
-                struct[4].parseIntValue(),                  # beforePercentFee_
-                struct[5].parseIntValue(),                  # afterPercentFee_
-                if struct[6] == "1" then true else false    # enabled_
+                struct[0].addressFromStringValue(),         # assetContract_
+                struct[1],                                  # executionAsset_
+                struct[2].parseIntValue(),                  # minAmount_
+                struct[3].parseIntValue(),                  # minFee_
+                struct[4].parseIntValue(),                  # thresholdFee_
+                struct[5].parseIntValue(),                  # beforePercentFee_
+                struct[6].parseIntValue(),                  # afterPercentFee_
+                if struct[7] == "1" then true else false    # enabled_
             )
-        case _ => ("", 0, 0, 0, 0, 0, false)
+        case _ => (Address(base58''), "", 0, 0, 0, 0, 0, false)
     }
 }
 
-func _saveBinding(executionChainId_: Int, assetId_: ByteVector, binding_: (String, Int, Int, Int, Int, Int, Boolean)) = {
+func _saveBinding(executionChainId_: Int, assetId_: ByteVector, binding_: (Address, String, Int, Int, Int, Int, Int, Boolean)) = {
     [StringEntry(
         makeString([KEY_BINDING, executionChainId_.toString(), assetId_.toBase58String()], SEPARATOR),
         makeString([
-            binding_._1,                                # executionAsset_
-            binding_._2.toString(),                     # minAmount_
-            binding_._3.toString(),                     # minFee_
-            binding_._4.toString(),                     # thresholdFee_
-            binding_._5.toString(),                     # beforePercentFee_
-            binding_._6.toString(),                     # afterPercentFee_
-            if binding_._7 then "1" else "0"            # enabled_
+            binding_._1.toString(),                     # assetContract_
+            binding_._2,                                # executionAsset_
+            binding_._3.toString(),                     # minAmount_
+            binding_._4.toString(),                     # minFee_
+            binding_._5.toString(),                     # thresholdFee_
+            binding_._6.toString(),                     # beforePercentFee_
+            binding_._7.toString(),                     # afterPercentFee_
+            if binding_._8 then "1" else "0"            # enabled_
         ], SEPARATOR)
     )]
 }
@@ -327,12 +323,16 @@ func init(executor_: String, adapter_: String, pauser_: String, feeRecipient_: S
 func mintTokens(
     callerContract_: String,
     assetContract_: String,
-    amount_: Int,
+    amount_: String,
     recipient_: String,
-    gaslessReward_: Int,
+    gaslessReward_: String,
     referrer_: String,
-    referrerFee_: Int
+    referrerFee_: String
 ) = {
+    let amount = amount_.parseInt().valueOrErrorMessage("mint: amount is not Int")
+    let gaslessReward = gaslessReward_.parseInt().valueOrErrorMessage("mint: gaslessReward is not Int")
+    let referrerFee = referrerFee_.parseInt().valueOrErrorMessage("mint: referrerFee is not Int")
+
     strict err =
         _whenInitialized() &&
         _whenNotPaused() &&
@@ -340,20 +340,20 @@ func mintTokens(
         _validateExecutor(i.caller, "mint: invalid executor") &&
         _validateCaller(callerContract_, "mint: invalid caller") &&
         _validateAddress(recipient_, "mint: invalid recipient address") &&
-        _validateInt(amount_, 0, MAX_INT, "mint: invalid amount") &&
-        _validateInt(gaslessReward_, 0, MAX_INT, "mint: invalid gaslessReward") &&
-        _validateInt(referrerFee_, 0, MAX_INT, "mint: invalid referrer fee")
+        _validateInt(amount, 0, MAX_INT, "mint: invalid amount") &&
+        _validateInt(gaslessReward, 0, MAX_INT, "mint: invalid gaslessReward") &&
+        _validateInt(referrerFee, 0, MAX_INT, "mint: invalid referrer fee")
 
     strict assetId = invoke(assetContract_.addressFromStringValue(), "getAssetId", [], [])._asBytes()
     strict assetDecimals = invoke(assetContract_.addressFromStringValue(), "getDecimals", [], [])._asInt()
 
-    let normalizedAmount = _normalizeDecimals(amount_, DECIMALS, assetDecimals)
-    let normalizedGasless = _normalizeDecimals(gaslessReward_, DECIMALS, assetDecimals)
+    let normalizedAmount = _normalizeDecimals(amount, DECIMALS, assetDecimals)
+    let normalizedGasless = _normalizeDecimals(gaslessReward, DECIMALS, assetDecimals)
 
     let referrer =
         match referrer_.addressFromString() {
             case refererAddress: Address =>
-                let normalizedReferrerFee = _normalizeDecimals(referrerFee_, DECIMALS, assetDecimals)
+                let normalizedReferrerFee = _normalizeDecimals(referrerFee, DECIMALS, assetDecimals)
 
                 (
                     normalizedReferrerFee,
@@ -362,10 +362,10 @@ func mintTokens(
             case _ => (0, [])
         }
 
-    let referrerFee = referrer._1
+    let normalizedReferrerFee = referrer._1
     let referrerActions = referrer._2
 
-    strict invocation = invoke(assetContract_.addressFromStringValue(), "mint", [normalizedAmount + referrerFee, this.toString()], [])
+    strict invocation = invoke(assetContract_.addressFromStringValue(), "mint", [normalizedAmount + normalizedReferrerFee, this.toString()], [])
 
     let actions =
         if normalizedGasless > 0 && addressFromStringValue(recipient_) != i.originCaller then
@@ -385,41 +385,44 @@ func mintTokens(
 @Callable(i)
 func burnTokens(
     executionChainId_: Int,
-    assetContract_: String,
-    amount_: Int,
     recipient_: String,
     gaslessReward_: Int
 ) = {
     strict err =
         _whenInitialized() &&
         _whenNotPaused() &&
-        _validateAddress(assetContract_, "burn: invalid asset contract") &&
         _validateChain(executionChainId_, "burn: invalid execution chain") &&
         _validatePaymentsSize(i.payments, 1, "burn: no payment") &&
-        _validateInt(i.payments[0].amount, amount_, MAX_INT, "burn: invalid payment amount")
+        _validateInt(i.payments[0].amount, 0, MAX_INT, "burn: invalid payment amount")
 
-    strict assetId = invoke(assetContract_.addressFromStringValue(), "getAssetId", [], [])._asBytes()
-    strict assetDecimals = invoke(assetContract_.addressFromStringValue(), "getDecimals", [], [])._asInt()
+    let amount = i.payments[0].amount
+    let assetId = match i.payments[0].assetId {
+        case a:ByteVector => a
+        case _ => throw("burn: invalid asset")
+    }
 
     let binding = _loadBinding(executionChainId_, assetId)
-    let executionAsset = binding._1
-    let minAmount = binding._2
-    let minFee = binding._3
-    let thresholdFee = binding._4
-    let beforePercentFee = binding._5
-    let afterPercentFee = binding._6
-    let enabled = binding._7
+    let assetContract = binding._1
+    let executionAsset = binding._2
+    let minAmount = binding._3
+    let minFee = binding._4
+    let thresholdFee = binding._5
+    let beforePercentFee = binding._6
+    let afterPercentFee = binding._7
+    let enabled = binding._8
 
     strict err1 =
-        _validatePaymentAsset(i.payments[0], assetId, "burn: invalid payment asset") &&
-        _validateInt(amount_, minAmount, MAX_INT, "burn: less than min") &&
+        _validateAddress(assetContract.toString(), "burn: no such binding") &&
+        _validateInt(amount, minAmount, MAX_INT, "burn: less than min") &&
         _validateBool(enabled, true, "burn: token is disabled")
 
-    let percent = if amount_ > thresholdFee then afterPercentFee else beforePercentFee
-    let fee = minFee + (amount_ * percent) / PERCENT_FACTOR
-    strict err2 = _validateInt(amount_, fee + 1, MAX_INT, "burn: fee more than amount")
+    strict assetDecimals = invoke(assetContract, "getDecimals", [], [])._asInt()
 
-    let amountToSend = amount_ - fee
+    let percent = if amount > thresholdFee then afterPercentFee else beforePercentFee
+    let fee = minFee + (amount * percent) / PERCENT_FACTOR
+    strict err2 = _validateInt(amount, fee + 1, MAX_INT, "burn: fee more than amount")
+
+    let amountToSend = amount - fee
     strict err3 = _validateInt(amountToSend, gaslessReward_ + 1, MAX_INT, "burn: reward more than amount")
 
     let updateFee = _loadFee(assetId) + fee
@@ -513,6 +516,7 @@ func updateBindingInfo(
     strict assetId = invoke(assetContract_.addressFromStringValue(), "getAssetId", [], [])._asBytes()
 
     let binding = (
+        assetContract_.addressFromStringValue(),
         executionAsset_,
         minAmount_,
         minFee_,

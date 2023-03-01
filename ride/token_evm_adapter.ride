@@ -229,7 +229,7 @@ func releaseTokens(
             (
                 _loadNativeTokenBridgeContract(),
                 "0x" + (
-                    base16'a7392f8eabab' +
+                    base16'b5e6f663' +
                     ZERO_SLOT +
                     recipientBytes +
                     amountBytes +
@@ -240,7 +240,7 @@ func releaseTokens(
             (
                 _loadERC20TokenBridgeContract(),
                 "0x" + (
-                    base16'5a6c22aeabab' +
+                    base16'9540a743' +
                     ZERO_SLOT +
                     executionAssetBytes +
                     recipientBytes +
