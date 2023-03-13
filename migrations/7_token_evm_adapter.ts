@@ -92,7 +92,7 @@ export default async function (
       throw 'protocolCaller not set'; // TODO: remove
       break;
     case 'testnet':
-      protocolCaller = '3N181WizgkxpWSFQoCnSbhRu2j1cwBadDYY';
+      protocolCaller = '3MxTLPY7MJxVDfpJcNy9Liq2r8pyZxNbjjU';
       break;
     case 'custom':
       protocolCaller = deployerAddress;

@@ -53,10 +53,10 @@ export default async function (
       throw 'todo';
       break;
     case 'testnet':
-      callerContact = '0xdc0ae8d62d300c487dc998188a4dde4fdac4b146';
+      callerContact = '0x9f21bdd5198a6c8779bf034810ab00c9d058069e';
       break;
     default:
-      callerContact = '0xdc0ae8d62d300c487dc998188a4dde4fdac4b146';
+      callerContact = '0x9f21bdd5198a6c8779bf034810ab00c9d058069e';
   }
 
   await invoke(

@@ -85,14 +85,14 @@ export default async function (
     throw e;
   });
 
-  let executorAddress = '';
+  let executorAddress = ''; // (executor.ride)
   switch (network.name) {
     case 'mainnet':
       executorAddress = ''; // TODO: add
       throw 'executorAddress not set'; // TODO: remove
       break;
     case 'testnet':
-      executorAddress = '3MuB15FfT7QUriD1R24GFbMPHz82NQ1Bm8X';
+      executorAddress = '3N935A8AAp2u1isbYYqX3Kp9prZmHF6kNps';
       break;
     case 'custom':
       executorAddress = deployerAddress;

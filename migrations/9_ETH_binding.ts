@@ -149,11 +149,11 @@ export default async function (
           },
           {
             type: 'integer',
-            value: 10000, // minFee_
+            value: 50000, // minFee_
           },
           {
             type: 'integer',
-            value: 1000000, // thresholdFee_
+            value: 1000000000, // thresholdFee_
           },
           {
             type: 'integer',
@@ -161,7 +161,7 @@ export default async function (
           },
           {
             type: 'integer',
-            value: 1500, // afterPercentFee_
+            value: 900, // afterPercentFee_
           },
           { type: 'boolean', value: true }, // enabled_
         ],
@@ -193,10 +193,10 @@ export default async function (
       throw 'set nativeTokenBridgeContract'; // TODO
       break;
     case 'testnet':
-      nativeTokenBridgeContract = '0x9bc2305890385aB6422a03d8ab958b7ccb3c815C';
+      nativeTokenBridgeContract = '0x4356Fc8912ee241464983c46E61A7069f8983f38';
       break;
     default:
-      nativeTokenBridgeContract = '0x9bc2305890385aB6422a03d8ab958b7ccb3c815C';
+      nativeTokenBridgeContract = '0x4356Fc8912ee241464983c46E61A7069f8983f38';
   }
 
   await invoke(
