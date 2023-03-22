@@ -88,8 +88,7 @@ export default async function (
   let protocolCaller = ''; // (evm_caller.ride)
   switch (network.name) {
     case 'mainnet':
-      protocolCaller = ''; // TODO: add
-      throw 'protocolCaller not set'; // TODO: remove
+      protocolCaller = '3PEiRVaHno6zYY4rnA8E9pRMPyRBd7WWi5e';
       break;
     case 'testnet':
       protocolCaller = '3MxTLPY7MJxVDfpJcNy9Liq2r8pyZxNbjjU';

@@ -179,7 +179,7 @@
     "amountPerContract": 10000000000,
     "network": {
       "name": "mainnet",
-      "nodeAPI": "https://nodes.wavesnodes.com",
+      "nodeAPI": "https://nodes.waves.exchange",
       "nodeTimeout": 60000,
       "chainID": "W",
       "apiKey": "waves-private-node",
