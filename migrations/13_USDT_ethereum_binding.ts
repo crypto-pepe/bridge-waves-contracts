@@ -23,15 +23,12 @@ export default async function (
   );
   console.log('Multisig contract address =', multisigAddress);
 
-  const tokenContract = keyPair(seedWithNonce(deployerSeed, 4));
+  const tokenContract = keyPair(seedWithNonce(deployerSeed, 8));
   const tokenContractAddress = address(
     { publicKey: tokenContract.publicKey },
     network.chainID
   );
-  console.log(
-    'ETH-Ethereum-PPT token contract address =',
-    tokenContractAddress
-  );
+  console.log('USDT-ERC20-PPT token contract address =', tokenContractAddress);
 
   const wrappedTokenBridgeContract = keyPair(seedWithNonce(deployerSeed, 5));
   const wrappedTokenBridgeContractAddress = address(
@@ -42,13 +39,6 @@ export default async function (
     'Wrapped Token Bridge contract address =',
     wrappedTokenBridgeContractAddress
   );
-
-  const collectorFeeContract = keyPair(seedWithNonce(deployerSeed, 6));
-  const collectorFeeContractAddress = address(
-    { publicKey: collectorFeeContract.publicKey },
-    network.chainID
-  );
-  console.log('Collector fee contract address =', collectorFeeContractAddress);
 
   const tokenEVMAdapterContract = keyPair(seedWithNonce(deployerSeed, 7));
   const tokenEVMAdapterContractAddress = address(
@@ -62,30 +52,10 @@ export default async function (
 
   await transfer(
     {
-      amount: 3 * network.invokeFee,
+      amount: network.invokeFee,
       recipient: wrappedTokenBridgeContractAddress,
     },
     deployerPrivateKey,
-    network,
-    proofsGenerator
-  ).catch((e) => {
-    throw e;
-  });
-
-  await invoke(
-    {
-      dApp: wrappedTokenBridgeContractAddress,
-      call: {
-        function: 'updateFeeRecipient',
-        args: [
-          {
-            type: 'string',
-            value: collectorFeeContractAddress, // feeRecipient_
-          },
-        ],
-      },
-    },
-    wrappedTokenBridgeContract.privateKey,
     network,
     proofsGenerator
   ).catch((e) => {
@@ -104,26 +74,17 @@ export default async function (
       execChainId = 10002;
   }
 
-  await invoke(
-    {
-      dApp: wrappedTokenBridgeContractAddress,
-      call: {
-        function: 'updateExecutionChain',
-        args: [
-          {
-            type: 'integer',
-            value: execChainId, // executionChainId_
-          },
-          { type: 'boolean', value: true }, // enabled_
-        ],
-      },
-    },
-    wrappedTokenBridgeContract.privateKey,
-    network,
-    proofsGenerator
-  ).catch((e) => {
-    throw e;
-  });
+  let executionAsset;
+  switch (network.name) {
+    case 'mainnet':
+      executionAsset = '0xdAC17F958D2ee523a2206206994597C13D831ec7';
+      break;
+    case 'testnet':
+      executionAsset = '0x3d4C6F189F81c9eA4AeE003C1fD49BE97614231A';
+      break;
+    default:
+      executionAsset = '0x3d4C6F189F81c9eA4AeE003C1fD49BE97614231A';
+  }
 
   await invoke(
     {
@@ -141,19 +102,19 @@ export default async function (
           },
           {
             type: 'string',
-            value: '0x0000000000000000000000000000000000000000', // executionAsset_
+            value: executionAsset, // executionAsset_
           },
           {
             type: 'integer',
-            value: 100000, // minAmount_
+            value: 5000000, // minAmount_
           },
           {
             type: 'integer',
-            value: 15000, // minFee_
+            value: 300000, // minFee_
           },
           {
             type: 'integer',
-            value: 1000000000, // thresholdFee_
+            value: 20000000000, // thresholdFee_
           },
           {
             type: 'integer',
@@ -186,27 +147,27 @@ export default async function (
     throw e;
   });
 
-  let nativeTokenBridgeContract = ''; // (CoinBridge.sol)
+  let erc20TokenBridgeContract = ''; // (ERC20TokenBridge.sol)
   switch (network.name) {
     case 'mainnet':
-      nativeTokenBridgeContract = '0x882260324AD5A87bF5007904B4A8EF87023c856A';
+      erc20TokenBridgeContract = '0x0de7b091A21BD439bdB2DfbB63146D9cEa21Ea83';
       break;
     case 'testnet':
-      nativeTokenBridgeContract = '0x4356Fc8912ee241464983c46E61A7069f8983f38';
+      erc20TokenBridgeContract = '0x02ae24F2F5E3b781b5b901d46250dF630b2659b5';
       break;
     default:
-      nativeTokenBridgeContract = '0x4356Fc8912ee241464983c46E61A7069f8983f38';
+      erc20TokenBridgeContract = '0x02ae24F2F5E3b781b5b901d46250dF630b2659b5';
   }
 
   await invoke(
     {
       dApp: tokenEVMAdapterContractAddress,
       call: {
-        function: 'setNativeTokenBridgeContract',
+        function: 'setERC20TokenBridgeContract',
         args: [
           {
             type: 'string',
-            value: nativeTokenBridgeContract, // contract_
+            value: erc20TokenBridgeContract, // contract_
           },
         ],
       },

@@ -7,7 +7,6 @@ import {
   transfer,
 } from '@pepe-team/waves-sc-test-utils';
 import { address, seedWithNonce, keyPair } from '@waves/ts-lib-crypto';
-import { InvokeScriptCallStringArgument } from '@waves/ts-types';
 
 export default async function (
   deployerSeed: string,
@@ -23,6 +22,13 @@ export default async function (
     network.chainID
   );
   console.log('Multisig contract address =', multisigAddress);
+
+  const tokenContract = keyPair(seedWithNonce(deployerSeed, 9));
+  const tokenContractAddress = address(
+    { publicKey: tokenContract.publicKey },
+    network.chainID
+  );
+  console.log('USDC-ERC20-PPT token contract address =', tokenContractAddress);
 
   const wrappedTokenBridgeContract = keyPair(seedWithNonce(deployerSeed, 5));
   const wrappedTokenBridgeContractAddress = address(
@@ -46,28 +52,70 @@ export default async function (
     throw e;
   });
 
-  let callerContact; // (WavesMintAdapter.sol)
+  let execChainId;
   switch (network.name) {
     case 'mainnet':
-      callerContact = '0x1985ca0fd8d8ea5a114a7e5f22634e6bd8e458d7';
+      execChainId = 2;
       break;
     case 'testnet':
-      callerContact = '0x9f21bdd5198a6c8779bf034810ab00c9d058069e';
+      execChainId = 10002;
       break;
     default:
-      callerContact = '0x9f21bdd5198a6c8779bf034810ab00c9d058069e';
+      execChainId = 10002;
+  }
+
+  let executionAsset;
+  switch (network.name) {
+    case 'mainnet':
+      executionAsset = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
+      break;
+    case 'testnet':
+      executionAsset = '';
+      throw 'todo';
+      break;
+    default:
+      executionAsset = '';
   }
 
   await invoke(
     {
       dApp: wrappedTokenBridgeContractAddress,
       call: {
-        function: 'updateCallerContract',
+        function: 'updateBindingInfo',
         args: [
           {
-            type: 'string',
-            value: callerContact,
+            type: 'integer',
+            value: execChainId, // executionChainId_
           },
+          {
+            type: 'string',
+            value: tokenContractAddress, // assetContract_
+          },
+          {
+            type: 'string',
+            value: executionAsset, // executionAsset_
+          },
+          {
+            type: 'integer',
+            value: 5000000, // minAmount_
+          },
+          {
+            type: 'integer',
+            value: 300000, // minFee_
+          },
+          {
+            type: 'integer',
+            value: 20000000000, // thresholdFee_
+          },
+          {
+            type: 'integer',
+            value: 1000, // beforePercentFee_
+          },
+          {
+            type: 'integer',
+            value: 900, // afterPercentFee_
+          },
+          { type: 'boolean', value: true }, // enabled_
         ],
       },
     },

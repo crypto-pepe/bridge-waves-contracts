@@ -24,6 +24,13 @@ export default async function (
   );
   console.log('Multisig contract address =', multisigAddress);
 
+  const tokenContract = keyPair(seedWithNonce(deployerSeed, 8));
+  const tokenContractAddress = address(
+    { publicKey: tokenContract.publicKey },
+    network.chainID
+  );
+  console.log('USDT-ERC20-PPT token contract address =', tokenContractAddress);
+
   const wrappedTokenBridgeContract = keyPair(seedWithNonce(deployerSeed, 5));
   const wrappedTokenBridgeContractAddress = address(
     { publicKey: wrappedTokenBridgeContract.publicKey },
@@ -37,7 +44,7 @@ export default async function (
   await transfer(
     {
       amount: network.invokeFee,
-      recipient: wrappedTokenBridgeContractAddress,
+      recipient: tokenContractAddress,
     },
     deployerPrivateKey,
     network,
@@ -46,32 +53,20 @@ export default async function (
     throw e;
   });
 
-  let callerContact; // (WavesMintAdapter.sol)
-  switch (network.name) {
-    case 'mainnet':
-      callerContact = '0x1985ca0fd8d8ea5a114a7e5f22634e6bd8e458d7';
-      break;
-    case 'testnet':
-      callerContact = '0x9f21bdd5198a6c8779bf034810ab00c9d058069e';
-      break;
-    default:
-      callerContact = '0x9f21bdd5198a6c8779bf034810ab00c9d058069e';
-  }
-
   await invoke(
     {
-      dApp: wrappedTokenBridgeContractAddress,
+      dApp: tokenContractAddress,
       call: {
-        function: 'updateCallerContract',
+        function: 'addMinter',
         args: [
           {
             type: 'string',
-            value: callerContact,
+            value: wrappedTokenBridgeContractAddress,
           },
         ],
       },
     },
-    wrappedTokenBridgeContract.privateKey,
+    tokenContract.privateKey,
     network,
     proofsGenerator
   ).catch((e) => {
