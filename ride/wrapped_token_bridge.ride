@@ -419,7 +419,7 @@ func burnTokens(
     strict assetDecimals = invoke(assetContract, "getDecimals", [], [])._asInt()
 
     let percent = if amount > thresholdFee then afterPercentFee else beforePercentFee
-    let fee = minFee + (amount * percent) / PERCENT_FACTOR
+    let fee = minFee + fraction(amount, percent, PERCENT_FACTOR)
     strict err2 = _validateInt(amount, fee + 1, MAX_INT, "burn: fee more than amount")
 
     let amountToSend = amount - fee
@@ -446,13 +446,20 @@ func burnTokens(
 }
 
 @Callable(i)
-func transferFee(assetContract_: String) = {
+func transferFee(executionChainId_: Int, assetId_: String) = {
     strict err =
         _whenInitialized() &&
         _whenNotPaused() &&
-        _validateAddress(assetContract_, "burnFee: invalid asset contract")
+        _validateAsset(assetId_, "transferFee: invalid asset")
 
-    strict assetId = invoke(assetContract_.addressFromStringValue(), "getAssetId", [], [])._asBytes()
+    let assetId = assetId_.fromBase58String()
+    let binding = _loadBinding(executionChainId_, assetId)
+    let assetContract = binding._1
+    let enabled = binding._8
+
+    strict err1 =
+        _validateAddress(assetContract.toString(), "transferFee: no such binding") &&
+        _validateBool(enabled, true, "transferFee: token is disabled")
 
     (
         _saveFee(assetId, 0) ++
